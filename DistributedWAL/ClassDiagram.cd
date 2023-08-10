@@ -1,4 +1,57 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<ClassDiagram MajorVersion="1" MinorVersion="1">
+<ClassDiagram MajorVersion="1" MinorVersion="1" MembersFormat="FullSignature">
+  <Class Name="DistributedWAL.Consensus" BaseTypeListCollapsed="true">
+    <Position X="5.75" Y="3" Width="4.5" />
+    <Compartments>
+      <Compartment Name="Nested Types" Collapsed="false" />
+    </Compartments>
+    <TypeIdentifier>
+      <HashCode>AAAACAAQACAAAAIAAAAAAAAACgAAgAAAAAQBAIEAAEA=</HashCode>
+      <FileName>Consensus.cs</FileName>
+    </TypeIdentifier>
+    <Lollipop Position="0.2" Collapsed="true" />
+  </Class>
+  <Class Name="DistributedWAL.Cluster">
+    <Position X="2.75" Y="1" Width="3.25" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Cluster.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DistributedWAL.DistributedWalConfig">
+    <Position X="10.75" Y="4.75" Width="2.25" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAABAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAA=</HashCode>
+      <FileName>DistributedWal.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DistributedWAL.DistributedWal">
+    <Position X="9" Y="0.5" Width="5.25" />
+    <TypeIdentifier>
+      <HashCode>AAAgAIAAAAAAAAAAAAAAAACAAAEAAAADAAAAAAAAAAA=</HashCode>
+      <FileName>DistributedWal.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DistributedWAL.WalWriter">
+    <Position X="10.25" Y="6.75" Width="4" />
+    <TypeIdentifier>
+      <HashCode>AIAAAABAIAAAAAAAAAYAAAAICEAARABCAACAAAEAAAA=</HashCode>
+      <FileName>WalWriter.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DistributedWAL.Publication">
+    <Position X="3.75" Y="7.5" Width="3.25" />
+    <TypeIdentifier>
+      <HashCode>AAAAAACAAAAAAAAAAAAAAAAACEAAgAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Publication.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Struct Name="DistributedWAL.LogWriter">
+    <Position X="1" Y="3.5" Width="3.25" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAEAARAAAAAAAAAEAAAA=</HashCode>
+      <FileName>LogWriter.cs</FileName>
+    </TypeIdentifier>
+  </Struct>
   <Font Name="Segoe UI" Size="9" />
 </ClassDiagram>

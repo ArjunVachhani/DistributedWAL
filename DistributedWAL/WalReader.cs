@@ -2,42 +2,65 @@
 
 namespace DistributedWAL;
 
-public delegate void LogReaderAction(long index, long timeStamp, LogReader arg2);
+public delegate void LogReaderAction(LogReader logReader);
 
 internal class WalReader
 {
-    internal void Read(LogReaderAction readerMethod)
+    private readonly Consensus _consensus;
+    private readonly LogReaderAction _readerMethod;
+    private long currentLogStartPosition = -1;
+    private long currentLogIndex;
+    private long currentLogSizeWithOverhead;
+    private long currentPosition = 0;
+    public WalReader(Consensus consensus, LogReaderAction readerMethod, long startLogIndex)
     {
-        var index = GetLogIndex();
-        var timeStamp = GetTimeStamp(1);
-        readerMethod(index, timeStamp, new LogReader(this));
+        _consensus = consensus;
+        _readerMethod = readerMethod;
+        while (startLogIndex != ReadNextLog())
+        { }
+        currentLogIndex = startLogIndex;
     }
 
-    internal int ReadInt32()
+    internal long? ReadNextLog()
     {
-        MemoryMappedViewAccessor viewAccessor = null!;
-
-        return viewAccessor.ReadInt32(0);
-    }
-
-    internal long GetLogIndex()
-    {
-        return ReadLongUntillNonZero(0);
-    }
-
-    internal long GetTimeStamp(long position)
-    {
-        return ReadLongUntillNonZero(position);
-    }
-
-    private long ReadLongUntillNonZero(long position)
-    {
-        MemoryMappedViewAccessor viewAccessor = null!;
-        long value = 0;
-        do
+        if (true)
         {
-            value = viewAccessor.ReadInt64(position);
-        } while (value == 0);
+            currentLogStartPosition = currentLogStartPosition + currentLogSizeWithOverhead;
+            currentLogSizeWithOverhead = ReadInt32();
+            if(currentLogSizeWithOverhead == -1)//EOF end of file
+            {
+            }
+            var term = ReadInt32();
+            currentLogIndex = ReadInt64();
+            currentPosition = 10;
+            _readerMethod(new LogReader(this, term, currentLogIndex));
+            return currentLogIndex;
+        }
+        //TODO return null
+        //return null;
+    }
+
+    internal int ReadInt32(long logIndex)
+    {
+        if (currentLogIndex != logIndex && currentPosition + 8 > currentLogStartPosition + currentLogSizeWithOverhead)
+            throw new DistributedWalException("Invalid logIndex");
+
+        return ReadInt32();
+    }
+
+    private int ReadInt32()
+    {
+        MemoryMappedViewAccessor viewAccessor = null!;
+        var value = viewAccessor.ReadInt32(currentPosition);
+        currentPosition += 4;
+        return value;
+    }
+
+    private long ReadInt64()
+    {
+        MemoryMappedViewAccessor viewAccessor = null!;
+        var value = viewAccessor.ReadInt64(currentPosition);
+        currentPosition += 8;
         return value;
     }
 }

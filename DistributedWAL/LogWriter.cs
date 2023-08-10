@@ -4,6 +4,9 @@ public readonly ref struct LogWriter
 {
     private readonly WalWriter _walWriter;
     private readonly long _logIndex;
+    private readonly long _timeStamp;
+
+    public long Timestamp => _timeStamp;
 
     [Obsolete("Invalid Constructor. Use LogWriter(WalWriter walWriter, long logIndex)", true)]
     public LogWriter()
@@ -11,10 +14,11 @@ public readonly ref struct LogWriter
         _walWriter = null!;
     }
 
-    internal LogWriter(WalWriter walWriter, long logIndex)
+    internal LogWriter(WalWriter walWriter, long logIndex, long timeStamp)
     {
         _walWriter = walWriter;
         _logIndex = logIndex;
+        _timeStamp = timeStamp;
     }
 
     public void Write(bool b)
@@ -47,9 +51,8 @@ public readonly ref struct LogWriter
         _walWriter.Write(bytes, offset, count, _logIndex);
     }
 
-    public long FinishLog()
+    public void FinishLog()
     {
         _walWriter.FinishLog();
-        return 12;//return LSN
     }
 }

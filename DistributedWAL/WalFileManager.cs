@@ -1,13 +1,13 @@
 ﻿using System.IO.MemoryMappedFiles;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace DistributedWAL;
 
 internal class WalFileManager : IDisposable
 {
+    private static readonly Regex fileNameRegex = new Regex("log-\\d*\\.bin", RegexOptions.Compiled);
     private readonly int _maxFileSize;
-    private readonly NodeInfo _nodeState;
-    private readonly ISystemClock _systemClock;
 
     private int _requestWriteLockInt = 0;
 
@@ -15,29 +15,27 @@ internal class WalFileManager : IDisposable
     private int _isUnkownSizeInProgress = 0; //0 == false, 1 == true
 
     private int _nextPosition = 0;
-    private long _nextLogIndex = 0;
 
     private int _writtenPosition = 0;
-    private long _writtenLogIndex = 0;
 
     private string _folderPath;
     private int _fileIndex = 0;
-    private readonly WalFile _walFile;
+    private WalFile _walFile = null!;
 
-    internal WalFileManager(NodeInfo nodeState, int maxSize, ISystemClock systemClock, string folderPath)
+    internal WalFileManager(int maxSize, string folderPath)
     {
-        _nodeState = nodeState;
         _maxFileSize = maxSize;
-        _systemClock = systemClock;
-
         _folderPath = Path.HasExtension(folderPath) ? Path.GetDirectoryName(folderPath)! : folderPath;
-        
+    }
+
+    internal (long lastLogIndex, int lastLogTerm) Initialize()
+    {
         if (!Directory.Exists(_folderPath))
             Directory.CreateDirectory(_folderPath);
 
         foreach (var file in Directory.GetFiles(_folderPath))
         {
-            if (!file.StartsWith("log"))
+            if (!fileNameRegex.IsMatch("log"))
                 continue;
 
             var fileIndex = int.Parse(file.Substring(file.IndexOf('-') + 1, file.IndexOf('.') - (file.IndexOf('-') + 1)));
@@ -56,20 +54,17 @@ internal class WalFileManager : IDisposable
         if (lastLogIndex == null && _fileIndex >= 1)
             throw new DistributedWalException($"Corrupted file index {_fileIndex - 1}.");
 
-        _nextLogIndex = (lastLogIndex ?? -1) + 1;
+        var nextLogIndex = (lastLogIndex ?? -1) + 1;
         _nextPosition = (lastLogEndPosition ?? -1) + 1;
-        _writtenLogIndex = _nextLogIndex - 1;
         _writtenPosition = _nextPosition - 1;
         _walFile = new WalFile(Path.Combine(_folderPath, $"log-{_fileIndex}.bin"));
+        return (lastLogIndex ?? -1, lastLogTerm ?? -1);
     }
 
-    internal (MemoryMappedViewAccessor viewAccessor, long logIndex, int position, long timeStamp) RequestWriteSegment(int length, bool isFixedSize)
+    internal (MemoryMappedViewAccessor viewAccessor, int position) RequestWriteSegment(int length, bool isFixedSize)
     {
         if (length <= 0)
             throw new DistributedWalException("Length must be positive");
-
-        if (_nodeState.Role != NodeRole.Leader)
-            throw new DistributedWalException("Node is not a leader.");
 
         while (Interlocked.CompareExchange(ref _requestWriteLockInt, 1, 0) == 1)
         {
@@ -98,23 +93,15 @@ internal class WalFileManager : IDisposable
         }
 
         int position = _nextPosition;//make a local copy to avoid reading next value
-        long logIndex = _nextLogIndex;
-
         _nextPosition += length;
-        ++_nextLogIndex;
 
         Interlocked.Exchange(ref _requestWriteLockInt, 0);
-        return (_walFile.ReadWriteViewAccessor, logIndex, position, _systemClock.GetTimeStamp());
+        return (_walFile.ReadWriteViewAccessor, position);
     }
 
-    internal void FinishedWriting(int startPosition, int endPosition, long logIndex)
+    internal void FinishedWriting(int startPosition, int endPosition)
     {
         while (Interlocked.CompareExchange(ref _writtenPosition, endPosition, startPosition - 1) != startPosition - 1)
-        {
-            Thread.SpinWait(10);
-        }
-
-        while (Interlocked.CompareExchange(ref _writtenLogIndex, logIndex, logIndex - 1) != logIndex - 1)
         {
             Thread.SpinWait(10);
         }

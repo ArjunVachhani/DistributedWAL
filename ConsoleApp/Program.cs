@@ -7,23 +7,33 @@ namespace ConsoleApp
     {
         static void Main(string[] args)
         {
-            var walFileManager = new WalFileManager(new NodeInfo(), int.MaxValue, new SystemClock(), "C:\\Users\\Arjun_Vachhani\\Desktop\\wallog");
-            WalWriter walWriter = new WalWriter(walFileManager);
-            var publication = new Publication(walWriter);
+            var config = new DistributedWalConfig()
+            {
+                MaxFileSize = int.MaxValue,
+                FilePath = "C:\\Users\\Arjun_Vachhani\\Desktop\\wallog"
+            };
+            DistributedWal distributedWal = DistributedWal.DangerousCreateNewDistributedWal(config);
+            var publication = distributedWal.AddPublication(StatusCallback);
             var sw = Stopwatch.StartNew();
             byte[] bytes = new byte[128];
             for (int j = 0; j < 2041330; j++)
             {
                 var logger = publication.AppendFixedLengthLog(1024);
+
                 for (int i = 0; i < 1024; i += 128)
                 {
                     logger.Write(bytes, 0, bytes.Length);
                 }
 
                 //logger.Write(bytes, 0, bytes.Length);
+
                 logger.FinishLog();
             }
             Console.WriteLine(sw.ElapsedMilliseconds);
+        }
+
+        static void StatusCallback(long logIndex, int status)
+        {
         }
     }
 }
@@ -47,7 +57,7 @@ class StateMachine
         lastIndex = 12;//save somewhere
 
         var publication = dw.AddPublication(StatusCallback);
-        if (publication.IsLeader)
+        if (publication.NodeRole == NodeRoles.Leader)
         {
             var logWriter = publication.AppendFixedLengthLog(100);
             logWriter.Write(1);
@@ -59,7 +69,7 @@ class StateMachine
     {
     }
 
-    void ProcessLog(long logIndex, long timeStamp, LogReader logReader)
+    void ProcessLog(LogReader logReader)
     {
         logReader.ReadInt32();
     }

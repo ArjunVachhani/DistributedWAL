@@ -4,11 +4,15 @@ namespace DistributedWAL;
 
 internal class WalWriter
 {
-    private readonly WalFileManager _fileManager;
-    internal WalWriter(WalFileManager fileManager)
-    {
-        _fileManager = fileManager;
-    }
+    //Message layout
+    //[4 length] + [4 term] + [8 logIndex]  + [X message] +  [4 length]
+    //So 1 byte message will take 29 bytes to save, 10 bytes message will take 38 bytes to save. and so on.
+
+    public const int MessageHeaderSize = 16; //[4 payload size] + [4 term] + [8 logIndex] 
+    public const int MessageTrailerSize = 4; //[4 payload size]
+    private const int MessageOverhead = MessageHeaderSize + MessageTrailerSize;
+
+    private readonly Consensus _consensus;
 
     private MemoryMappedViewAccessor? _mappedViewAccessor;
     private long _logIndex = -1;
@@ -17,31 +21,11 @@ internal class WalWriter
     private int _maxPosition = -1;
     private bool _isFixedSize = true;
 
-    //Message layout
-    //[4 length] + [8 timestamp] + [8 logIndex] + [4 term] + [X message] +  [4 length]
-    //So 1 byte message will take 29 bytes to save, 10 bytes message will take 38 bytes to save. and so on.
+    public int NodeRole => _consensus.NodeRole;
 
-    public const int messageHeaderSize = 24; //[4 payload size] + [8 timestamp] + [8 logIndex] + [4 term]
-    public const int messageTrailerSize = 4; //[4 payload size]
-    private const int messageOverhead = messageHeaderSize + messageTrailerSize;
-
-    public void Write(long logIndex, long timestamp, ReadOnlySpan<byte> data)
+    internal WalWriter(Consensus consensus)
     {
-        var mmf = MemoryMappedFile.CreateFromFile("");
-        var stream = mmf.CreateViewStream();
-
-        Span<byte> bytes = stackalloc byte[8];
-
-        BitConverter.TryWriteBytes(bytes, logIndex);
-        stream.Write(bytes);
-
-        BitConverter.TryWriteBytes(bytes, timestamp);
-        stream.Write(bytes);
-
-        BitConverter.TryWriteBytes(bytes, data.Length);
-        stream.Write(bytes.Slice(0, 2));
-
-        stream.Write(data);
+        _consensus = consensus;
     }
 
     internal void Write(bool b, long logIndex)
@@ -92,21 +76,19 @@ internal class WalWriter
         WriteInternal(bytes, offset, count);
     }
 
-    internal long StartLog(int maxLength, bool isFixedSize)
+    internal (long logIndex, long timeStamp) StartLog(int maxLength, bool isFixedSize)
     {
         if (_logIndex != -1)
             throw new DistributedWalException("WalWriter is in middle of writing a log. Can not do StartLog");
 
-        (_mappedViewAccessor, _logIndex, _startPosition, var timestamp) = _fileManager.RequestWriteSegment(maxLength + messageOverhead, isFixedSize);
+        (_mappedViewAccessor, var term, _logIndex, _startPosition, var timestamp) = _consensus.RequestWriteSegment(maxLength + MessageOverhead, isFixedSize);
         _currentPosition = _startPosition;
-        _maxPosition = checked(_currentPosition + maxLength + messageOverhead);
+        _maxPosition = checked(_currentPosition + maxLength + MessageOverhead);
         _isFixedSize = isFixedSize;
-        var term = 0;//TODO Term
         WriteInternal(maxLength);
-        WriteInternal(timestamp);
-        WriteInternal(_logIndex);
         WriteInternal(term);
-        return _logIndex;
+        WriteInternal(_logIndex);
+        return (_logIndex, timestamp);
     }
 
     internal void FinishLog()
@@ -114,13 +96,9 @@ internal class WalWriter
         if (_logIndex == -1)
             throw new DistributedWalException("WalWriter is not writing a log.");
 
-        int messageSize;
-        if (_isFixedSize)
-            messageSize = (_maxPosition - _startPosition) - messageOverhead;
-        else
-            messageSize = (_currentPosition - _startPosition) - messageHeaderSize;
+        int messageSize = ((_isFixedSize ? _maxPosition : _currentPosition) - _startPosition) - MessageOverhead;
 
-        _currentPosition = checked(_startPosition + messageSize + messageHeaderSize);
+        _currentPosition = checked(_startPosition + messageSize + MessageHeaderSize);
         WriteInternal(messageSize);
         var endPosition = _currentPosition - 1;
 
@@ -129,7 +107,7 @@ internal class WalWriter
             _currentPosition = _startPosition;
             WriteInternal(messageSize);
         }
-        _fileManager.FinishedWriting(_startPosition, endPosition, _logIndex);
+        _consensus.FinishedWriting(_startPosition, endPosition, _logIndex);
         _mappedViewAccessor = null;
         _logIndex = -1;
         _startPosition = -1;

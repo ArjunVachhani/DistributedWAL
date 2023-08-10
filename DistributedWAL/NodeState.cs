@@ -1,16 +1,14 @@
-﻿namespace DistributedWAL
+﻿namespace DistributedWAL;
+
+public class NodeInfo
 {
-    public class NodeInfo
-    {
-        public NodeRole Role { get; } = NodeRole.Leader;
-        public int Term { get; }
-    }
+    public int NodeRole { get; }
+    public int Term { get; }
+}
 
-
-    public enum NodeRole
-    {
-        Follower = 1,
-        Candidate = 2,
-        Leader = 3,
-    }
+public static class NodeRoles
+{
+    public const int Follower = 0;
+    public const int Candidate = 1;
+    public const int Leader = 2;
 }
