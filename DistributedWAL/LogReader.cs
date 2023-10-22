@@ -26,4 +26,7 @@ public readonly ref struct LogReader
     {
         return _walReader.ReadInt32(_logIndex);
     }
+
+    //TODO this is not really helpful api, need to think on how deserialize a json/custom binary deserialization. Probably exposing bytes.
+    // also need to think about reading data that is not supposed to be read by logReader. think about safety concerns.
 }

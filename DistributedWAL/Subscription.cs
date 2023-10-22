@@ -1,6 +1,6 @@
 ﻿namespace DistributedWAL;
 
-public class Subscription
+internal class Subscription
 {
     private readonly WalReader _walReader;
     internal Subscription(WalReader walReader)
@@ -8,7 +8,7 @@ public class Subscription
         _walReader = walReader;
     }
 
-    public long? ProcessNext()
+    internal LogNumber? ProcessNext()
     {
         return _walReader.ReadNextLog();
     }

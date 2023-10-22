@@ -1,76 +1,78 @@
 ﻿using DistributedWAL;
 using System.Diagnostics;
 
-namespace ConsoleApp
+namespace ConsoleApp;
+
+internal class Program
 {
-    internal class Program
+    static void Main(string[] args)
     {
-        static void Main(string[] args)
+        var config = new DistributedWalConfig()
         {
-            var config = new DistributedWalConfig()
-            {
-                MaxFileSize = int.MaxValue,
-                FilePath = "C:\\Users\\Arjun_Vachhani\\Desktop\\wallog"
-            };
-            DistributedWal distributedWal = DistributedWal.DangerousCreateNewDistributedWal(config);
-            var publication = distributedWal.AddPublication(StatusCallback);
-            var sw = Stopwatch.StartNew();
-            byte[] bytes = new byte[128];
-            for (int j = 0; j < 2041330; j++)
-            {
-                var logger = publication.AppendFixedLengthLog(1024);
+            MaxFileSize = int.MaxValue,
+            LogDirectory = "C:\\Users\\Arjun_Vachhani\\Desktop\\wallog"
+        };
+        DistributedWal<SampleStateMachine> distributedWal = DistributedWal.DangerousCreateNewDistributedWal<SampleStateMachine>(config);
 
-                for (int i = 0; i < 1024; i += 128)
-                {
-                    logger.Write(bytes, 0, bytes.Length);
-                }
+        if (distributedWal.NodeRole == NodeRoles.Leader)
+        {
+            //add log
+            //var pub  = distributedWal.AddPublication();
+            //pub.AppendLog(20);
 
-                //logger.Write(bytes, 0, bytes.Length);
+            // perform read action
+            //distributedWal.Read(new Span<byte>());
+        }
+        else
+        {
 
-                logger.FinishLog();
-            }
-            Console.WriteLine(sw.ElapsedMilliseconds);
         }
 
-        static void StatusCallback(long logIndex, int status)
-        {
-        }
-    }
-}
+        distributedWal.RegisterLogResultCallback(StatusCallback);
+        var publication = distributedWal.AddPublication();
 
-class StateMachine
-{
-    void InitProcess()
-    {
-        DistributedWal.ResumeDistibutedWal(null!);
-        DistributedWal dw = DistributedWal.DangerousCreateNewDistributedWal(null!);
-        long lastIndex = 0;//Get From somewhere
-        var subscription = dw.AddSubscriber(ProcessLog, 123);
-        while (!CancellationToken.None.IsCancellationRequested)
+        var sw = Stopwatch.StartNew();
+        var mesageSize = 1024;
+        var arrayLen = mesageSize;
+        byte[] bytes = new byte[arrayLen];
+        for (int j = 0; j < int.MaxValue / (mesageSize + 20); j++)
         {
-            var t = subscription.ProcessNext();
-            if (t != null)
-                lastIndex = t.Value;
-            else
-                Thread.Yield();
+            var logger = publication.AppendFixedLengthLog(mesageSize);
+            logger.Write(j);
+            logger.Write(bytes, 0, bytes.Length - 8);
+            logger.Write(j);
+            logger.FinishLog();
         }
-        lastIndex = 12;//save somewhere
 
-        var publication = dw.AddPublication(StatusCallback);
-        if (publication.NodeRole == NodeRoles.Leader)
+        distributedWal.ExecuteReadOperation(null);
+
+        Console.WriteLine(sw.ElapsedMilliseconds);
+        sw.Restart();
+
+        distributedWal.Flush();
+
+        Console.WriteLine(sw.ElapsedMilliseconds);
+        sw.Restart();
+
+
+        for (int j = 0; j < int.MaxValue / (mesageSize + 20); j++)
         {
-            var logWriter = publication.AppendFixedLengthLog(100);
-            logWriter.Write(1);
-            logWriter.FinishLog();
+            distributedWal.ApplyCommittedLogs();
         }
-    }
 
-    void StatusCallback(long logIndex, int status)
-    {
+        distributedWal.StopAsync().GetAwaiter().GetResult();
+
+        Console.WriteLine(sw.ElapsedMilliseconds);
+        //distributedWal.Stop().GetAwaiter().GetResult()
     }
 
-    void ProcessLog(LogReader logReader)
+
+
+    static void StatusCallback(LogNumber logNumber, object? result)
     {
-        logReader.ReadInt32();
+        if (result is int xyx)
+        {
+
+        }
     }
 }

@@ -8,36 +8,41 @@ internal class WalReader
 {
     private readonly Consensus _consensus;
     private readonly LogReaderAction _readerMethod;
-    private long currentLogStartPosition = -1;
-    private long currentLogIndex;
-    private long currentLogSizeWithOverhead;
+    private long currentLogStartPosition = 0;
+    private long currentLogIndex = -1;
+    private long currentLogSizeWithOverhead = 0;
     private long currentPosition = 0;
     public WalReader(Consensus consensus, LogReaderAction readerMethod, long startLogIndex)
     {
         _consensus = consensus;
         _readerMethod = readerMethod;
-        while (startLogIndex != ReadNextLog())
-        { }
-        currentLogIndex = startLogIndex;
+        //if (_consensus.CommittedLogIndex > -1)
+        //{
+        //    //ideally it should not have to seek it should be handled outside.
+        //    while (startLogIndex != ReadNextLog()) 
+        //    { }
+        //    currentLogIndex = startLogIndex;
+        //}
     }
 
-    internal long? ReadNextLog()
+    internal LogNumber? ReadNextLog()
     {
-        if (true)
+        if (currentLogIndex < _consensus.CommittedLogIndex)
         {
             currentLogStartPosition = currentLogStartPosition + currentLogSizeWithOverhead;
-            currentLogSizeWithOverhead = ReadInt32();
-            if(currentLogSizeWithOverhead == -1)//EOF end of file
+            currentPosition = currentLogStartPosition;
+            var currentLogSize = ReadInt32();
+            currentLogSizeWithOverhead = currentLogSize + Constants.MessageOverhead;
+            if (currentLogSize == -1)//EOF end of file
             {
+                //TODO
             }
             var term = ReadInt32();
             currentLogIndex = ReadInt64();
-            currentPosition = 10;
             _readerMethod(new LogReader(this, term, currentLogIndex));
-            return currentLogIndex;
+            return new LogNumber(term, currentLogIndex);
         }
-        //TODO return null
-        //return null;
+        return null;
     }
 
     internal int ReadInt32(long logIndex)
@@ -50,7 +55,7 @@ internal class WalReader
 
     private int ReadInt32()
     {
-        MemoryMappedViewAccessor viewAccessor = null!;
+        MemoryMappedViewAccessor viewAccessor = _consensus.WalFileManager.WalFile.ReadOnlyViewAccessor;
         var value = viewAccessor.ReadInt32(currentPosition);
         currentPosition += 4;
         return value;
@@ -58,7 +63,7 @@ internal class WalReader
 
     private long ReadInt64()
     {
-        MemoryMappedViewAccessor viewAccessor = null!;
+        MemoryMappedViewAccessor viewAccessor = _consensus.WalFileManager.WalFile.ReadOnlyViewAccessor;
         var value = viewAccessor.ReadInt64(currentPosition);
         currentPosition += 8;
         return value;

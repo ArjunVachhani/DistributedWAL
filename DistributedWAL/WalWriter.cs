@@ -2,15 +2,9 @@
 
 namespace DistributedWAL;
 
+//responsibility : tldr avoid data corruption. Responsibility of WalWriter is to restrict writing outside of the allocated space and publication can write at a time one log to avoid over writing previous log
 internal class WalWriter
 {
-    //Message layout
-    //[4 length] + [4 term] + [8 logIndex]  + [X message] +  [4 length]
-    //So 1 byte message will take 29 bytes to save, 10 bytes message will take 38 bytes to save. and so on.
-
-    public const int MessageHeaderSize = 16; //[4 payload size] + [4 term] + [8 logIndex] 
-    public const int MessageTrailerSize = 4; //[4 payload size]
-    private const int MessageOverhead = MessageHeaderSize + MessageTrailerSize;
 
     private readonly Consensus _consensus;
 
@@ -76,29 +70,29 @@ internal class WalWriter
         WriteInternal(bytes, offset, count);
     }
 
-    internal (long logIndex, long timeStamp) StartLog(int maxLength, bool isFixedSize)
+    internal (long logIndex, int term) StartLog(int maxLength, bool isFixedSize)
     {
         if (_logIndex != -1)
             throw new DistributedWalException("WalWriter is in middle of writing a log. Can not do StartLog");
 
-        (_mappedViewAccessor, var term, _logIndex, _startPosition, var timestamp) = _consensus.RequestWriteSegment(maxLength + MessageOverhead, isFixedSize);
+        (_mappedViewAccessor, var term, _logIndex, _startPosition) = _consensus.RequestWriteSegment(maxLength + Constants.MessageOverhead, isFixedSize);
         _currentPosition = _startPosition;
-        _maxPosition = checked(_currentPosition + maxLength + MessageOverhead);
+        _maxPosition = checked(_currentPosition + maxLength + Constants.MessageOverhead);
         _isFixedSize = isFixedSize;
         WriteInternal(maxLength);
         WriteInternal(term);
         WriteInternal(_logIndex);
-        return (_logIndex, timestamp);
+        return (_logIndex, term);
     }
 
-    internal void FinishLog()
+    internal void FinishLog(long logIndex)
     {
-        if (_logIndex == -1)
+        if (logIndex != _logIndex || _logIndex == -1)
             throw new DistributedWalException("WalWriter is not writing a log.");
 
-        int messageSize = ((_isFixedSize ? _maxPosition : _currentPosition) - _startPosition) - MessageOverhead;
+        int messageSize = ((_isFixedSize ? _maxPosition : _currentPosition) - _startPosition) - Constants.MessageOverhead;
 
-        _currentPosition = checked(_startPosition + messageSize + MessageHeaderSize);
+        _currentPosition = checked(_startPosition + messageSize + Constants.MessageHeaderSize);
         WriteInternal(messageSize);
         var endPosition = _currentPosition - 1;
 
@@ -113,6 +107,12 @@ internal class WalWriter
         _startPosition = -1;
         _currentPosition = -1;
         _maxPosition = -1;
+    }
+
+    internal void DiscardLog(long logIndex)
+    {
+        if (logIndex != _logIndex || _logIndex == -1)
+            throw new DistributedWalException("WalWriter is not writing a log.");
     }
 
     private void WriteInternal(bool b)

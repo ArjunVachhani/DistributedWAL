@@ -11,8 +11,13 @@ namespace DistributedWAL
             ReadOnlyViewAccessor = MemoryMappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
         }
         private MemoryMappedFile MemoryMappedFile { get; set; }
-        public MemoryMappedViewAccessor ReadWriteViewAccessor { get; private set; }
-        public MemoryMappedViewAccessor ReadOnlyViewAccessor { get; private set; }
+        public MemoryMappedViewAccessor ReadWriteViewAccessor { get; private init; }
+        public MemoryMappedViewAccessor ReadOnlyViewAccessor { get; private init; }
+
+        internal void Flush()
+        {
+            ReadWriteViewAccessor.Flush();
+        }
 
         public void Dispose()
         {

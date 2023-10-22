@@ -22,6 +22,8 @@ internal class WalFileManager : IDisposable
     private int _fileIndex = 0;
     private WalFile _walFile = null!;
 
+    public WalFile WalFile => _walFile;//TODO should not exist, HACK : exposing for easily read
+
     internal WalFileManager(int maxSize, string folderPath)
     {
         _maxFileSize = maxSize;
@@ -61,6 +63,11 @@ internal class WalFileManager : IDisposable
         return (lastLogIndex ?? -1, lastLogTerm ?? -1);
     }
 
+    internal void Flush()
+    {
+        _walFile.Flush();
+    }
+
     internal (MemoryMappedViewAccessor viewAccessor, int position) RequestWriteSegment(int length, bool isFixedSize)
     {
         if (length <= 0)
@@ -75,7 +82,7 @@ internal class WalFileManager : IDisposable
         //Wait if unknown size write in progress
         while (Interlocked.CompareExchange(ref _isUnkownSizeInProgress, 1, 1) == 1)
         {
-            Thread.Sleep(10);
+            Thread.SpinWait(10);
         }
 
         if (!isFixedSize)
