@@ -1,4 +1,4 @@
-﻿using System.IO.MemoryMappedFiles;
+﻿using DistributedWAL.Storage;
 
 namespace DistributedWAL;
 
@@ -13,19 +13,19 @@ internal partial class Consensus : IDisposable
     private long _committedLogIndex = -1;
     private int _nodeRole;
 
-    private readonly WalFileManager _walFileManager;
+    private readonly LogStore _logStore;
+    private readonly FileWriter _fileWriter;
     internal int NodeRole => Interlocked.CompareExchange(ref _nodeRole, 0, 0);
     internal int Term => Interlocked.CompareExchange(ref _term, 0, 0);
     internal long CommittedLogIndex => Interlocked.CompareExchange(ref _committedLogIndex, 0, 0);
-    internal WalFileManager WalFileManager => _walFileManager;//TODO not ok, it should not expose underlying store
 
     internal Consensus(DistributedWalConfig config)
     {
-        _walFileManager = new WalFileManager(config.MaxFileSize, config.LogDirectory);
-        (var lastLogIndex, var lastLogTerm) = _walFileManager.Initialize();
-        _term = lastLogTerm;
-        _nextLogIndex = lastLogIndex + 1;
-        _writtenLogIndex = lastLogIndex;
+        _logStore = new LogStore(config.MaxFileSize, config.WriteBatchTime, config.ReadBatchTime, config.LogDirectory);
+        _fileWriter = _logStore.GetFileWriter();
+
+        _term = 0;
+        _nextLogIndex = 0;
         _nodeRole = NodeRoles.Leader; //TODO Not OK
     }
 
@@ -47,41 +47,44 @@ internal partial class Consensus : IDisposable
         return default;
     }
 
-    internal (MemoryMappedViewAccessor viewAccessor, int term, long logIndex, int position) RequestWriteSegment(int length, bool isFixedSize)
+    internal (BufferSegment bufferSegment, LogNumber logNumber) RequestWriteSegment(int length)
     {
         if (_nodeRole != NodeRoles.Leader)
             throw new DistributedWalException("Node is not a leader.");
 
         //TODO we should have some back pressure mechanism to max uncommited logs when follower are falling behind
-        (var viewAccessor, var position) = _walFileManager.RequestWriteSegment(length, isFixedSize);
-
+        var bufferSegment = _fileWriter.RequestWriteSegment(length);
         var logIndex = Interlocked.Increment(ref _nextLogIndex) - 1;
-        return (viewAccessor, _term, logIndex, position);
+        return (bufferSegment, new LogNumber(_term, logIndex));
     }
 
-    internal void FinishedWriting(int startPosition, int endPosition, long logIndex)
+    internal void FinishedWriting(int size, LogNumber logNumber)
     {
-        _walFileManager.FinishedWriting(startPosition, endPosition);
-        while (Interlocked.CompareExchange(ref _writtenLogIndex, logIndex, logIndex - 1) != logIndex - 1)
-        {
-            Thread.SpinWait(10);
-        }
-
-        //TODO 
-        Interlocked.Exchange(ref _committedLogIndex, logIndex);
-        _committedLogIndex = _writtenLogIndex;
+        _fileWriter.CompleteWrite(size, logNumber);
+        _writtenLogIndex = logNumber.LogIndex;
+        _committedLogIndex = logNumber.LogIndex;//TODO _committedLogIndex is should not be hear
     }
 
     internal void CancelWriting()
     {
+        _fileWriter.CancelWrite();
+    }
+
+    internal FileReader GetFileReader(long logIndex)
+    {
+        return _logStore.GetFileReader(logIndex);
+    }
+
+    private void RemoveLogsAfter(long logIndex)
+    {
 
     }
 
-    internal void RequestVote()
+    private void RequestVote()
     {
     }
 
-    internal void TimeOut()
+    private void TimeOut()
     {
         if (_nodeRole != NodeRoles.Leader)
         {
@@ -92,11 +95,13 @@ internal partial class Consensus : IDisposable
 
     internal void Flush()
     {
-        _walFileManager.Flush();
+        _fileWriter.Flush();
+        _fileWriter.Stop();
+        //_walFileManager.Flush();
     }
 
     public void Dispose()
     {
-        _walFileManager.Dispose();
+        //_walFileManager.Dispose();
     }
 }

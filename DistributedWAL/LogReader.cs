@@ -3,11 +3,9 @@
 public readonly ref struct LogReader
 {
     private readonly WalReader _walReader;
-    private readonly long _logIndex;
-    private readonly int _term;
+    private readonly LogNumber _logNumber;
 
-    public long LogIndex => _logIndex;
-    public int Term => _term;
+    public LogNumber LogNumber => _logNumber;
 
     [Obsolete("Invalid Constructor. Use LogWriter(WalWriter walWriter, long logIndex)", true)]
     public LogReader()
@@ -15,16 +13,25 @@ public readonly ref struct LogReader
         _walReader = null!;
     }
 
-    internal LogReader(WalReader reader, int term, long logIndex)
+    internal LogReader(WalReader reader, LogNumber logNumber)
     {
         _walReader = reader;
-        _logIndex = logIndex;
-        _term = term;
+        _logNumber = logNumber;
     }
 
     public int ReadInt32()
     {
-        return _walReader.ReadInt32(_logIndex);
+        return _walReader.ReadInt32(_logNumber.LogIndex);
+    }
+
+    public long ReadInt64()
+    {
+        return _walReader.ReadInt64(_logNumber.LogIndex);
+    }
+
+    public ReadOnlySpan<byte> GetSpan(int length)
+    {
+        return _walReader.GetSpan(_logNumber.LogIndex, length);
     }
 
     //TODO this is not really helpful api, need to think on how deserialize a json/custom binary deserialization. Probably exposing bytes.

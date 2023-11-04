@@ -1,14 +1,149 @@
-﻿using System.IO.MemoryMappedFiles;
+﻿using System.Buffers;
 
 namespace DistributedWAL.Storage;
 
-
-// this should not be thread safe class
 internal class FileReader
 {
-	private readonly MemoryMappedViewAccessor _accessor;
-	public FileReader(MemoryMappedViewAccessor accessor)
-	{
-		_accessor = accessor;
+    const int BatchSize = 4096;//TODO use batch size/page size
+
+    private readonly FileProvider _fileProvider;
+    private readonly LogBuffer _logBuffer = new LogBuffer();
+    private readonly int _readBatchTimeInMicroseconds;
+    private readonly Thread _readerThread;
+
+    private LogFile _logFile;
+    private bool stopping = false;//TODO better mechanism
+
+    public FileReader(FileProvider fileProvider, LogFile logFile, int readBatchTime)
+    {
+        _fileProvider = fileProvider;
+        _logFile = logFile;
+        _readBatchTimeInMicroseconds = readBatchTime;
+        _readerThread = new Thread(WriteToLogBuffer);
+        _readerThread.Start();
+    }
+
+    public BufferSegment ReadNextLog()
+    {
+        BufferSegment bufferSegment;
+        while (!_logBuffer.TryReadLog(out bufferSegment))
+        {
+            _logBuffer.WaitForDataToRead();
+        }
+        //TODO we will need to have logic to check it log was overwritten to discard the cache and re read the logs
+        return bufferSegment;
+    }
+
+    public void CompleteRead(int size)
+    {
+        _logBuffer.CompleteRead(size);
+    }
+
+    public void Stop()
+    {
+        Volatile.Write(ref stopping, true);
+        Flush();
+    }
+
+    public void Flush()
+    {
+        while (_logBuffer.GetAvailableBytesToRead() > 0)
+        {
+            Thread.SpinWait(5);
+        }
+    }
+
+    private void WriteToLogBuffer()
+    {
+        DateTime batchStartTime = DateTime.UtcNow;
+        byte[] tempBuffer = new byte[_logBuffer.Capacity];
+        int tempBufferStart = 0;
+        bool batchStarted = false;
+        int bytes;
+        while (Volatile.Read(ref stopping) == false || batchStarted)//TODO  || Volatile.Read(ref writesInProgress)
+        {
+            bytes = _logFile.BytesAvailableToRead;
+            if (bytes > 0 && batchStarted == false)
+            {
+                batchStartTime = DateTime.UtcNow;
+                batchStarted = true;
+            }
+            //TODO we need to jump to new file on reaching end of file.
+            var microseconds = Utils.GetDateDiffMicroseconds(batchStartTime, DateTime.UtcNow);
+            if (bytes > 0 && bytes < BatchSize && microseconds < _readBatchTimeInMicroseconds)
+            {
+                PoorTelemetry.ReaderWaitingForMoreData++;
+                Thread.SpinWait(25);
+            }
+            else if (bytes > BatchSize || (batchStarted && microseconds >= _readBatchTimeInMicroseconds))
+            {
+                var bufferCapacity = tempBuffer.Length - tempBufferStart;
+                var bytesToWrite = tempBufferStart + _logFile.Read(tempBuffer.AsSpan(tempBufferStart, bytes > bufferCapacity ? bufferCapacity : bytes));
+                tempBufferStart = 0;//next time it should start from 0, if data is left it will be shifted and tempBufferStart will be updated
+                var startPosition = 0;
+                while (bytesToWrite > 4)
+                {
+                    var logSize = BitConverter.ToInt32(tempBuffer, startPosition) + Constants.MessageOverhead;
+                    if (bytesToWrite >= logSize)
+                    {
+                        WriteLog(tempBuffer, startPosition, logSize);
+                        bytesToWrite -= logSize;
+                        startPosition += logSize;
+                    }
+                    else
+                    {
+                        ShiftDataInBegning(tempBuffer, startPosition, bytesToWrite);
+                        tempBufferStart = bytesToWrite;
+                        bytesToWrite = 0;// so that if outside of while is not executed.
+                    }
+                }
+                if (bytesToWrite > 0)
+                {
+                    ShiftDataInBegningFast(tempBuffer, startPosition, bytesToWrite);
+                    tempBufferStart = bytesToWrite;
+                }
+                PoorTelemetry.BytesRead += bytesToWrite;
+                batchStarted = false;
+                PoorTelemetry.FileReadCount++;
+            }
+            else if (bytes == 0)
+            {
+                _logFile.WaitForMoreData();
+            }
+        }
+    }
+
+    private void WriteLog(byte[] bytes, int startIndex, int length)
+    {
+        BufferSegment bufferSegment;
+        while (!_logBuffer.TryBeginWrite(length, out bufferSegment))
+        {
+            _logBuffer.WaitForDataToWrite();
+            //Thread.SpinWait(20);//TODO we are busy spining, may be we should wait
+        }
+        bytes.AsSpan(startIndex, length).CopyTo(bufferSegment.GetSpan(0, length));
+        var term = BitConverter.ToInt32(bytes, Constants.MessagPayloadSize);
+        var logIndex = BitConverter.ToInt64(bytes, 8);
+        _logBuffer.CompleteWrite(length, new LogNumber(term, logIndex));
+    }
+
+    private void ShiftDataInBegning(byte[] bytes, int startIndex, int length)
+    {
+        var temp = ArrayPool<byte>.Shared.Rent(length);
+        Array.Copy(bytes, startIndex, temp, 0, length);
+        Array.Copy(temp, 0, bytes, 0, length);
+        ArrayPool<byte>.Shared.Return(bytes);
+        PoorTelemetry.BytesCopied += length;
+        PoorTelemetry.TimesCopied++;
+    }
+
+    private void ShiftDataInBegningFast(byte[] bytes, int startIndex, int length)
+    {
+        PoorTelemetry.BytesCopiedFast += length;
+        PoorTelemetry.TimesCopiedFast += length;
+        for (int i = 0; i < length; i++)
+        {
+            bytes[i] = bytes[startIndex + i];
+        }
     }
 }

@@ -4,8 +4,7 @@
 public readonly ref struct LogWriter
 {
     private readonly WalWriter _walWriter;
-    private readonly long _logIndex;
-    private readonly int _term;
+    private readonly LogNumber _logNumber;
 
 
     [Obsolete("Invalid Constructor. Use LogWriter(WalWriter walWriter, long logIndex)", true)]
@@ -14,53 +13,52 @@ public readonly ref struct LogWriter
         _walWriter = null!;
     }
 
-    internal LogWriter(WalWriter walWriter, long logIndex, int term)
+    internal LogWriter(WalWriter walWriter, LogNumber logNumber)
     {
         _walWriter = walWriter;
-        _logIndex = logIndex;
-        _term = term;
+        _logNumber = logNumber;
     }
 
     public void Write(bool b)
     {
-        _walWriter.Write(b, _logIndex);
+        _walWriter.Write(b, _logNumber.LogIndex);
     }
 
     public void Write(short s)
     {
-        _walWriter.Write(s, _logIndex);
+        _walWriter.Write(s, _logNumber.LogIndex);
     }
 
     public void Write(int i)
     {
-        _walWriter.Write(i, _logIndex);
+        _walWriter.Write(i, _logNumber.LogIndex);
     }
 
     public void Write(long l)
     {
-        _walWriter.Write(l, _logIndex);
+        _walWriter.Write(l, _logNumber.LogIndex);
     }
 
     public void Write(decimal d)
     {
-        _walWriter.Write(d, _logIndex);
+        _walWriter.Write(d, _logNumber.LogIndex);
     }
 
     //TODO exposing alernative api underlying span can be faster
     //THINK ABOUT corruption possibility
-    public void Write(byte[] bytes, int offset, int count)
+    public void Write(Span<byte> bytes)
     {
-        _walWriter.Write(bytes, offset, count, _logIndex);
+        _walWriter.Write(bytes, _logNumber.LogIndex);
     }
 
     public LogNumber FinishLog()
     {
-        _walWriter.FinishLog(_logIndex);
-        return new LogNumber(_term, _logIndex);
+        _walWriter.FinishLog(_logNumber.LogIndex);
+        return _logNumber;
     }
 
     public void DiscardLog()
     {
-        _walWriter.DiscardLog(_logIndex);
+        _walWriter.DiscardLog(_logNumber.LogIndex);
     }
 }

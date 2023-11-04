@@ -2,9 +2,14 @@
 
 public class DistributedWalConfig
 {
+    private const int DefaultMaxFileSize = 64 * 1024 * 1024;//64MB
+    private const int DefaultWriteBatchTime = 10;//10 Micro seconds;
+    private const int DefaultReadBatchTime = 5;//5 Micro seconds;
     public string WalName { get; init; } = null!; //TODO nullable?
     public string LogDirectory { get; init; } = null!; //TODO nullable?
-    public int MaxFileSize { get; set; }
+    public int MaxFileSize { get; init; } = DefaultMaxFileSize;
+    public int WriteBatchTime { get; init; } = DefaultWriteBatchTime;
+    public int ReadBatchTime { get; init; } = DefaultReadBatchTime;
 }
 
 public delegate void ResultCallback(LogNumber logNumber, object? result);
@@ -114,7 +119,7 @@ public class DistributedWal<T> where T : class, IStateMachine, new()
 
             try
             {
-                _resultCallback?.Invoke(new LogNumber(logReader.Term, logReader.LogIndex), result);
+                _resultCallback?.Invoke(logReader.LogNumber, result);
             }
             catch (Exception)
             {

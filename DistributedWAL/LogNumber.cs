@@ -12,6 +12,6 @@ public readonly struct LogNumber
         LogIndex = logIndex;
     }
 
-    public readonly int Term { get; init; }
-    public readonly long LogIndex { get; init; }
+    public readonly int Term { get; private init; }
+    public readonly long LogIndex { get; private init; }
 }

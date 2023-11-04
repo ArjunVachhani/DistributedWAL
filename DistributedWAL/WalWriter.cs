@@ -1,19 +1,18 @@
-﻿using System.IO.MemoryMappedFiles;
+﻿using DistributedWAL.Storage;
+using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 
 namespace DistributedWAL;
 
 //responsibility : tldr avoid data corruption. Responsibility of WalWriter is to restrict writing outside of the allocated space and publication can write at a time one log to avoid over writing previous log
 internal class WalWriter
 {
-
     private readonly Consensus _consensus;
 
-    private MemoryMappedViewAccessor? _mappedViewAccessor;
-    private long _logIndex = -1;
-    private int _startPosition = -1;
+    private BufferSegment _bufferSegment;
+    private LogNumber _logNumber = new LogNumber(-1, -1);
     private int _currentPosition = -1;
     private int _maxPosition = -1;
-    private bool _isFixedSize = true;
 
     public int NodeRole => _consensus.NodeRole;
 
@@ -24,7 +23,7 @@ internal class WalWriter
 
     internal void Write(bool b, long logIndex)
     {
-        if (logIndex != _logIndex || _maxPosition < _currentPosition + 1)
+        if (logIndex != _logNumber.LogIndex || _maxPosition < _currentPosition + 1)
             throw new DistributedWalException("Log storage is full.");
 
         WriteInternal(b);
@@ -32,7 +31,7 @@ internal class WalWriter
 
     internal void Write(short s, long logIndex)
     {
-        if (logIndex != _logIndex || _maxPosition < _currentPosition + 2)
+        if (logIndex != _logNumber.LogIndex || _maxPosition < _currentPosition + 2)
             throw new DistributedWalException("Log storage is full.");
 
         WriteInternal(s);
@@ -40,7 +39,7 @@ internal class WalWriter
 
     internal void Write(int i, long logIndex)
     {
-        if (logIndex != _logIndex || _maxPosition < _currentPosition + 4)
+        if (logIndex != _logNumber.LogIndex || _maxPosition < _currentPosition + 4)
             throw new DistributedWalException("Log storage is full.");
 
         WriteInternal(i);
@@ -48,7 +47,7 @@ internal class WalWriter
 
     internal void Write(long l, long logIndex)
     {
-        if (logIndex != _logIndex || _maxPosition < _currentPosition + 8)
+        if (logIndex != _logNumber.LogIndex || _maxPosition < _currentPosition + 8)
             throw new DistributedWalException("Log storage is full.");
 
         WriteInternal(l);
@@ -56,98 +55,100 @@ internal class WalWriter
 
     internal void Write(decimal d, long logIndex)
     {
-        if (logIndex != _logIndex || _maxPosition < _currentPosition + 16)
+        if (logIndex != _logNumber.LogIndex || _maxPosition < _currentPosition + 16)
             throw new DistributedWalException("Log storage is full.");
 
         WriteInternal(d);
     }
 
-    internal void Write(byte[] bytes, int offset, int count, long logIndex)
+    internal void Write(ReadOnlySpan<byte> bytes, long logIndex)
     {
-        if (logIndex != _logIndex || _maxPosition < _currentPosition + 16)
+        if (logIndex != _logNumber.LogIndex || _maxPosition < _currentPosition + bytes.Length)
             throw new DistributedWalException("Log storage is full.");
 
-        WriteInternal(bytes, offset, count);
+        WriteInternal(bytes);
     }
 
-    internal (long logIndex, int term) StartLog(int maxLength, bool isFixedSize)
+    internal LogNumber StartLog(int maxLength)
     {
-        if (_logIndex != -1)
+        if (_logNumber.LogIndex != -1)
             throw new DistributedWalException("WalWriter is in middle of writing a log. Can not do StartLog");
 
-        (_mappedViewAccessor, var term, _logIndex, _startPosition) = _consensus.RequestWriteSegment(maxLength + Constants.MessageOverhead, isFixedSize);
-        _currentPosition = _startPosition;
-        _maxPosition = checked(_currentPosition + maxLength + Constants.MessageOverhead);
-        _isFixedSize = isFixedSize;
-        WriteInternal(maxLength);
-        WriteInternal(term);
-        WriteInternal(_logIndex);
-        return (_logIndex, term);
+        (_bufferSegment, _logNumber) = _consensus.RequestWriteSegment(maxLength + Constants.MessageOverhead);
+        _currentPosition = 4;// skip first four bytes for payload size
+        _maxPosition = maxLength + Constants.MessageHeaderSize;
+        WriteInternal(_logNumber.Term);
+        WriteInternal(_logNumber.LogIndex);
+        return _logNumber;
     }
 
     internal void FinishLog(long logIndex)
     {
-        if (logIndex != _logIndex || _logIndex == -1)
+        if (logIndex != _logNumber.LogIndex || _logNumber.LogIndex == -1)
             throw new DistributedWalException("WalWriter is not writing a log.");
 
-        int messageSize = ((_isFixedSize ? _maxPosition : _currentPosition) - _startPosition) - Constants.MessageOverhead;
+        var messageSize = _currentPosition - Constants.MessageHeaderSize;
 
-        _currentPosition = checked(_startPosition + messageSize + Constants.MessageHeaderSize);
         WriteInternal(messageSize);
-        var endPosition = _currentPosition - 1;
-
-        if (!_isFixedSize)
-        {
-            _currentPosition = _startPosition;
-            WriteInternal(messageSize);
-        }
-        _consensus.FinishedWriting(_startPosition, endPosition, _logIndex);
-        _mappedViewAccessor = null;
-        _logIndex = -1;
-        _startPosition = -1;
+        _currentPosition = 0;
+        WriteInternal(messageSize);
+        _consensus.FinishedWriting(messageSize + Constants.MessageOverhead, _logNumber);
+        _logNumber = new LogNumber(-1, -1);
         _currentPosition = -1;
         _maxPosition = -1;
     }
 
     internal void DiscardLog(long logIndex)
     {
-        if (logIndex != _logIndex || _logIndex == -1)
+        if (logIndex != _logNumber.LogIndex || _logNumber.LogIndex == -1)
             throw new DistributedWalException("WalWriter is not writing a log.");
+
+        _consensus.CancelWriting();
+        _logNumber = new LogNumber(-1, -1);
+        _currentPosition = -1;
+        _maxPosition = -1;
     }
 
     private void WriteInternal(bool b)
     {
-        _mappedViewAccessor!.Write(_currentPosition, b);
+        _bufferSegment[_currentPosition] = Convert.ToByte(b);
         _currentPosition += 1;
     }
 
     private void WriteInternal(short s)
     {
-        _mappedViewAccessor!.Write(_currentPosition, s);
+        BinaryPrimitives.WriteInt16BigEndian(_bufferSegment.GetSpan(_currentPosition, 2), s);
         _currentPosition += 2;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteInternal(int i)
     {
-        _mappedViewAccessor!.Write(_currentPosition, i);
+        _bufferSegment.Write(_currentPosition, i);
         _currentPosition += 4;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteInternal(long l)
     {
-        _mappedViewAccessor!.Write(_currentPosition, l);
+        _bufferSegment.Write(_currentPosition, l);
         _currentPosition += 8;
     }
 
     private void WriteInternal(decimal d)
     {
-        _mappedViewAccessor!.Write(_currentPosition, d);
+        Span<int> bytes = stackalloc int[4];
+        decimal.GetBits(d, bytes);
+        BinaryPrimitives.WriteInt32BigEndian(_bufferSegment.GetSpan(_currentPosition, 4), bytes[0]);
+        BinaryPrimitives.WriteInt32BigEndian(_bufferSegment.GetSpan(_currentPosition + 4, 4), bytes[1]);
+        BinaryPrimitives.WriteInt32BigEndian(_bufferSegment.GetSpan(_currentPosition + 8, 4), bytes[2]);
+        BinaryPrimitives.WriteInt32BigEndian(_bufferSegment.GetSpan(_currentPosition + 12, 4), bytes[3]);
         _currentPosition += 16;
     }
 
-    private void WriteInternal(byte[] bytes, int offset, int count)
+    private void WriteInternal(ReadOnlySpan<byte> bytes)
     {
-        _mappedViewAccessor!.WriteArray(_currentPosition, bytes, offset, count);
-        _currentPosition += 16;
+        bytes.CopyTo(_bufferSegment.GetSpan(_currentPosition, bytes.Length));
+        _currentPosition += bytes.Length;
     }
 }

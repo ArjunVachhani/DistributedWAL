@@ -1,4 +1,4 @@
-﻿using System.IO.MemoryMappedFiles;
+﻿using DistributedWAL.Storage;
 
 namespace DistributedWAL;
 
@@ -7,65 +7,79 @@ public delegate void LogReaderAction(LogReader logReader);
 internal class WalReader
 {
     private readonly Consensus _consensus;
+    private readonly FileReader _fileReader;
     private readonly LogReaderAction _readerMethod;
-    private long currentLogStartPosition = 0;
-    private long currentLogIndex = -1;
-    private long currentLogSizeWithOverhead = 0;
-    private long currentPosition = 0;
+
+    private BufferSegment _bufferSegment;
+    private int _currentLogTerm = -1;
+    private long _currentLogIndex = -1;
+    private int _currentLogSizeWithOverhead = 0;
+    private int _currentPosition = 0;
     public WalReader(Consensus consensus, LogReaderAction readerMethod, long startLogIndex)
     {
         _consensus = consensus;
         _readerMethod = readerMethod;
-        //if (_consensus.CommittedLogIndex > -1)
-        //{
-        //    //ideally it should not have to seek it should be handled outside.
-        //    while (startLogIndex != ReadNextLog()) 
-        //    { }
-        //    currentLogIndex = startLogIndex;
-        //}
+        _fileReader = _consensus.GetFileReader(startLogIndex);
     }
 
     internal LogNumber? ReadNextLog()
     {
-        if (currentLogIndex < _consensus.CommittedLogIndex)
+        if (_currentLogIndex < _consensus.CommittedLogIndex)
         {
-            currentLogStartPosition = currentLogStartPosition + currentLogSizeWithOverhead;
-            currentPosition = currentLogStartPosition;
-            var currentLogSize = ReadInt32();
-            currentLogSizeWithOverhead = currentLogSize + Constants.MessageOverhead;
-            if (currentLogSize == -1)//EOF end of file
-            {
-                //TODO
-            }
-            var term = ReadInt32();
-            currentLogIndex = ReadInt64();
-            _readerMethod(new LogReader(this, term, currentLogIndex));
-            return new LogNumber(term, currentLogIndex);
+            _bufferSegment = _fileReader.ReadNextLog();
+            _currentPosition = 0;
+            _currentLogSizeWithOverhead = ReadInt32() + Constants.MessageOverhead;
+            _currentLogTerm = ReadInt32();
+            _currentLogIndex = ReadInt64();
+            _readerMethod(new LogReader(this, new LogNumber(_currentLogTerm, _currentLogIndex)));
+            _fileReader.CompleteRead(_currentLogSizeWithOverhead);
+            return new LogNumber(_currentLogTerm, _currentLogIndex);
         }
         return null;
     }
 
     internal int ReadInt32(long logIndex)
     {
-        if (currentLogIndex != logIndex && currentPosition + 8 > currentLogStartPosition + currentLogSizeWithOverhead)
+        if (_currentLogIndex != logIndex && _currentPosition + 4 > _currentLogSizeWithOverhead)
             throw new DistributedWalException("Invalid logIndex");
 
         return ReadInt32();
     }
 
+    internal long ReadInt64(long logIndex)
+    {
+        if (_currentLogIndex != logIndex && _currentPosition + 8 > _currentLogSizeWithOverhead)
+            throw new DistributedWalException("Invalid logIndex");
+
+        return ReadInt64();
+    }
+
+    internal ReadOnlySpan<byte> GetSpan(long logIndex, int length)
+    {
+        if (_currentLogIndex != logIndex && _currentPosition + length > _currentLogSizeWithOverhead)
+            throw new DistributedWalException("Invalid logIndex");
+
+        return GetSpan(length);
+    }
+
     private int ReadInt32()
     {
-        MemoryMappedViewAccessor viewAccessor = _consensus.WalFileManager.WalFile.ReadOnlyViewAccessor;
-        var value = viewAccessor.ReadInt32(currentPosition);
-        currentPosition += 4;
+        var value = _bufferSegment.ReadInt32(_currentPosition);
+        _currentPosition += 4;
         return value;
     }
 
     private long ReadInt64()
     {
-        MemoryMappedViewAccessor viewAccessor = _consensus.WalFileManager.WalFile.ReadOnlyViewAccessor;
-        var value = viewAccessor.ReadInt64(currentPosition);
-        currentPosition += 8;
+        var value = _bufferSegment.ReadInt64(_currentPosition);
+        _currentPosition += 8;
         return value;
+    }
+
+    private ReadOnlySpan<byte> GetSpan(int length)
+    {
+        var span = _bufferSegment.GetSpan(_currentPosition, length);
+        _currentPosition += length;
+        return span;
     }
 }
