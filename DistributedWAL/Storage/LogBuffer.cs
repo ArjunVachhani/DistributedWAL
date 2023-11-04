@@ -1,6 +1,4 @@
-﻿using DistributedWAL.Storage;
-
-namespace DistributedWAL;
+﻿namespace DistributedWAL.Storage;
 
 //single producer, single consumer forward only buffer(non ring);
 //why single producer : because we need to support cancel write, which will release previous space. and we dont want hole

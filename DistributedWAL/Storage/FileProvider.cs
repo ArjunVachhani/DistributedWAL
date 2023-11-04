@@ -1,9 +1,8 @@
-﻿using DistributedWAL.Storage;
-using System.Diagnostics.Tracing;
+﻿using System.Diagnostics.Tracing;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
-namespace DistributedWAL;
+namespace DistributedWAL.Storage;
 
 internal class FileProvider
 {
