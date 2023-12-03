@@ -1,10 +1,9 @@
-﻿using System.Diagnostics.Tracing;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
 namespace DistributedWAL.Storage;
 
-internal class FileProvider
+internal class FileProvider : IFileProvider
 {
     private static readonly Regex fileNameRegex = new Regex("logs-\\d*\\.bin", RegexOptions.Compiled);
 
@@ -119,7 +118,7 @@ internal class FileProvider
         }
     }
 
-    internal LogFile GetNextFileForWrite(long logIndex)
+    public LogFile GetNextFileForWrite(long logIndex)
     {
         try
         {
@@ -146,7 +145,7 @@ internal class FileProvider
         return _currentLogFile.Value;
     }
 
-    internal void Stop()
+    public void Stop()
     {
         StopCts.Cancel();
         _lockFileStream?.Dispose();
@@ -163,7 +162,7 @@ internal class FileProvider
         }
     }
 
-    internal LogFile GetFileForRead(long logIndex)
+    public LogFile GetFileForRead(long logIndex)
     {
         int? fileIndex = null;
         try
@@ -197,7 +196,7 @@ internal class FileProvider
         }
     }
 
-    internal LogFile GetFileForRead(int fileIndex)
+    public LogFile GetFileForRead(int fileIndex)
     {
         if (File.Exists(FilePath(fileIndex)))
         {

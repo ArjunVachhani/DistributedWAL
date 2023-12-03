@@ -1,4 +1,5 @@
 ﻿using DistributedWAL;
+using System.Buffers.Binary;
 using System.Diagnostics;
 
 namespace ConsoleApp;
@@ -17,7 +18,7 @@ internal class Program
         if (distributedWal.NodeRole == NodeRoles.Leader)
         {
             //add log
-            //var pub  = distributedWal.AddPublication();
+            //var pub = distributedWal.AddPublication();
             //pub.AppendLog(20);
 
             // perform read action
@@ -29,7 +30,7 @@ internal class Program
         }
 
         distributedWal.RegisterLogResultCallback(StatusCallback);
-        var publication = distributedWal.AddPublication();
+        //var publication = distributedWal.AddPublication();
 
         var sw = Stopwatch.StartNew();
         var mesageSize = 256;
@@ -37,12 +38,16 @@ internal class Program
         byte[] bytes = new byte[arrayLen];
         for (int j = 0; j < int.MaxValue / (mesageSize + 20); j++)
         {
-            var logger = publication.AppendFixedLengthLog(mesageSize);
-            //logger.Write(bytes);
-            logger.Write(j);
-            logger.Write(bytes.AsSpan(0, bytes.Length - 8));
-            logger.Write(j);
-            logger.FinishLog();
+            BinaryPrimitives.WriteInt32LittleEndian(bytes, j);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(bytes.Length - 4), j);
+            distributedWal.WriteLog(bytes);
+
+            //var logger = publication.AppendFixedLengthLog(mesageSize);
+            ////logger.Write(bytes);
+            //logger.Write(j);
+            //logger.Write(bytes.AsSpan(0, bytes.Length - 8));
+            //logger.Write(j);
+            //logger.FinishLog();
         }
 
         //distributedWal.ExecuteReadOperation(null);

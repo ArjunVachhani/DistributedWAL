@@ -3,12 +3,12 @@
 internal class Subscription
 {
     private readonly WalReader _walReader;
-    internal Subscription(WalReader walReader)
+    public Subscription(WalReader walReader)
     {
         _walReader = walReader;
     }
 
-    internal LogNumber? ProcessNext()
+    public LogNumber? ProcessNext()
     {
         return _walReader.ReadNextLog();
     }

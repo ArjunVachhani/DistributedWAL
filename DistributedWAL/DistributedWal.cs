@@ -1,17 +1,5 @@
 ﻿namespace DistributedWAL;
 
-public class DistributedWalConfig
-{
-    private const int DefaultMaxFileSize = 64 * 1024 * 1024;//64MB
-    private const int DefaultWriteBatchTime = 10;//10 Micro seconds;
-    private const int DefaultReadBatchTime = 5;//5 Micro seconds;
-    public string WalName { get; init; } = null!; //TODO nullable?
-    public string LogDirectory { get; init; } = null!; //TODO nullable?
-    public int MaxFileSize { get; init; } = DefaultMaxFileSize;
-    public int WriteBatchTime { get; init; } = DefaultWriteBatchTime;
-    public int ReadBatchTime { get; init; } = DefaultReadBatchTime;
-}
-
 public delegate void ResultCallback(LogNumber logNumber, object? result);
 
 public class DistributedWal
@@ -32,7 +20,7 @@ public class DistributedWal
 //peer discovery should be done at a later stage. if peer discover is done at a later stage and it is singleton then it allows it be easily configurable in dependecy injection
 public class DistributedWal<T> where T : class, IStateMachine, new()
 {
-    private readonly Consensus _consensus;
+    private readonly IConsensus _consensus;
 
     private readonly T _stateMachine; //TODO initialize
 
@@ -53,22 +41,22 @@ public class DistributedWal<T> where T : class, IStateMachine, new()
         return StopTaskCompletionSource.Task;
     }
 
-    internal DistributedWal(Consensus consensus)
+    internal DistributedWal(IConsensus consensus)
     {
         _consensus = consensus;
         _stateMachine = new T();
         WalApplierSubscription = AddSubscriber(LogProcessor, 0);
     }
 
+    public LogNumber WriteLog(ReadOnlySpan<byte> bytes)
+    {
+        return _consensus.WriteLog(bytes);
+    }
+
     //TODO do we really need to expose this with public modifier?
     internal Subscription AddSubscriber(LogReaderAction logReader, long index)
     {
         return new Subscription(new WalReader(_consensus, logReader, index));
-    }
-
-    public Publication AddPublication()
-    {
-        return new Publication(new WalWriter(_consensus));
     }
 
     public void RegisterLogResultCallback(ResultCallback statusCallback)
@@ -84,7 +72,7 @@ public class DistributedWal<T> where T : class, IStateMachine, new()
     //TODO I think there is no need to expose flush. it should expose stop method which will let host to shutdown it properly
     public void Flush()
     {
-        _consensus.Flush();
+        //_consensus.Flush();
     }
 
     //TODO this should not be public API. This should run in a separate thread.

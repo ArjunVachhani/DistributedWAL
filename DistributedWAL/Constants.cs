@@ -11,6 +11,8 @@ internal class Constants
     public const int MessageTrailerSize = MessagPayloadSize; //[4 payload size]
     public const int MessageOverhead = MessageHeaderSize + MessageTrailerSize;
 
+    public const int TermOffset = MessagPayloadSize;
+    public const int IndexOffset = TermOffset + 4;
 
     //TODO add flags to store to message
 }

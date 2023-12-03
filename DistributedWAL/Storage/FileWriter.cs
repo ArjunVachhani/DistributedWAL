@@ -1,10 +1,10 @@
 ﻿namespace DistributedWAL.Storage;
 
-internal class FileWriter
+internal class FileWriter : IFileWriter
 {
     const int BatchSize = 4096;//TODO use batch size/page size
 
-    private readonly FileProvider _fileProvider;
+    private readonly IFileProvider _fileProvider;
     private readonly LogBuffer _logBuffer = new LogBuffer();
     private readonly int _writeBatchTimeInMicroseconds;
     private readonly Thread _writerThread;
@@ -13,13 +13,24 @@ internal class FileWriter
     private bool stopping = false;//TODO better mechanism
     //private bool writesInProgress = false;
 
-    public FileWriter(FileProvider fileprovider, int writeBatchTime)
+    public FileWriter(IFileProvider fileprovider, int writeBatchTime)
     {
         _fileProvider = fileprovider;
         _logFile = fileprovider.GetNextFileForWrite(0);
         _writeBatchTimeInMicroseconds = writeBatchTime;
         _writerThread = new Thread(WriterToFile);
         _writerThread.Start();
+    }
+
+    public void WriteLog(ReadOnlySpan<byte> bytes, LogNumber logNumber)
+    {
+        if (bytes.Length < 1 || bytes.Length > _logBuffer.Capacity)
+            throw new DistributedWalException($"Invalid size {bytes.Length}. Size must be in rage the of 1 to {_logBuffer.Capacity}");
+
+        while (!_logBuffer.TryWrite(bytes, logNumber))
+        {
+            Thread.SpinWait(20);
+        }
     }
 
     public BufferSegment RequestWriteSegment(int size)

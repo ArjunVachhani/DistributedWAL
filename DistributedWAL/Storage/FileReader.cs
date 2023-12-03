@@ -2,19 +2,19 @@
 
 namespace DistributedWAL.Storage;
 
-internal class FileReader
+internal class FileReader : IFileReader
 {
     const int BatchSize = 4096;//TODO use batch size/page size
 
-    private readonly FileProvider _fileProvider;
+    private readonly IFileProvider _fileProvider;
     private readonly LogBuffer _logBuffer = new LogBuffer();
     private readonly int _readBatchTimeInMicroseconds;
     private readonly Thread _readerThread;
 
     private LogFile _logFile;
     private bool stopping = false;//TODO better mechanism
-
-    public FileReader(FileProvider fileProvider, LogFile logFile, int readBatchTime)
+    private int _lastLogSize = 0;
+    public FileReader(IFileProvider fileProvider, LogFile logFile, int readBatchTime)
     {
         _fileProvider = fileProvider;
         _logFile = logFile;
@@ -30,13 +30,18 @@ internal class FileReader
         {
             _logBuffer.WaitForDataToRead();
         }
+        _lastLogSize = bufferSegment.Length;
         //TODO we will need to have logic to check it log was overwritten to discard the cache and re read the logs
         return bufferSegment;
     }
 
-    public void CompleteRead(int size)
+    public void CompleteRead()
     {
-        _logBuffer.CompleteRead(size);
+        if (_lastLogSize > 0)
+        {
+            _logBuffer.CompleteRead(_lastLogSize);
+            _lastLogSize = 0;
+        }
     }
 
     public void Stop()

@@ -1,4 +1,6 @@
-﻿namespace DistributedWAL.Storage;
+﻿using System.Buffers.Binary;
+
+namespace DistributedWAL.Storage;
 
 //single producer, single consumer forward only buffer(non ring);
 //why single producer : because we need to support cancel write, which will release previous space. and we dont want hole
@@ -125,6 +127,49 @@ internal class LogBuffer
         size = _bytes.Length - _writerPosition;
         Interlocked.Exchange(ref _lock, 0);
         return size;
+    }
+
+    public bool TryWrite(ReadOnlySpan<byte> data, LogNumber logNumber)
+    {
+        if (data.Length < 1 || data.Length > _bytes.Length)
+            throw new DistributedWalException($"Invalid size {data.Length}. Size must be in rage the of 1 to {_bytes.Length}");
+
+        while (Interlocked.CompareExchange(ref _lock, 1, 0) == 1)
+        {
+            Thread.SpinWait(1);
+        }
+
+        bool result = false;
+        var messageSize = data.Length + Constants.MessageOverhead;
+        if (_writerPosition + messageSize <= _bytes.Length)
+        {
+            var startPosition = _writerPosition;
+            result = true;
+            _writeInProgress = 1;
+            _logNumber = logNumber;
+            Interlocked.Exchange(ref _lock, 0);
+
+            var span = _bytes.AsSpan(startPosition, messageSize);
+            BinaryPrimitives.WriteInt32LittleEndian(span, data.Length);
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(Constants.TermOffset), logNumber.Term);
+            BinaryPrimitives.WriteInt64LittleEndian(span.Slice(Constants.IndexOffset), logNumber.LogIndex);
+            data.CopyTo(span.Slice(Constants.MessageHeaderSize));
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(Constants.MessageHeaderSize + data.Length), data.Length);
+
+            while (Interlocked.CompareExchange(ref _lock, 1, 0) == 1)
+            {
+                Thread.SpinWait(1);
+            }
+            _writeInProgress = 0;
+            _writerPosition += messageSize;
+        }
+
+        Interlocked.Exchange(ref _lock, 0);
+
+        if (result && !_readManualRestEventSlim.IsSet)
+            _readManualRestEventSlim.Set();
+
+        return result;
     }
 
     public bool TryBeginWrite(int size, out BufferSegment bufferSegment)
