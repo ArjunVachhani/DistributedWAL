@@ -1,4 +1,5 @@
 ﻿using DistributedWAL;
+using System.Buffers.Binary;
 using System.Diagnostics;
 
 namespace ConsoleApp;
@@ -17,7 +18,7 @@ internal class Program
         if (distributedWal.NodeRole == NodeRoles.Leader)
         {
             //add log
-            //var pub  = distributedWal.AddPublication();
+            //var pub = distributedWal.AddPublication();
             //pub.AppendLog(20);
 
             // perform read action
@@ -29,40 +30,61 @@ internal class Program
         }
 
         distributedWal.RegisterLogResultCallback(StatusCallback);
-        var publication = distributedWal.AddPublication();
+        //var publication = distributedWal.AddPublication();
 
         var sw = Stopwatch.StartNew();
-        var mesageSize = 1024;
+        var mesageSize = 256;
         var arrayLen = mesageSize;
         byte[] bytes = new byte[arrayLen];
         for (int j = 0; j < int.MaxValue / (mesageSize + 20); j++)
         {
-            var logger = publication.AppendFixedLengthLog(mesageSize);
-            logger.Write(j);
-            logger.Write(bytes, 0, bytes.Length - 8);
-            logger.Write(j);
-            logger.FinishLog();
+            BinaryPrimitives.WriteInt32LittleEndian(bytes, j);
+            BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(bytes.Length - 4), j);
+            distributedWal.WriteLog(bytes);
+
+            //var logger = publication.AppendFixedLengthLog(mesageSize);
+            ////logger.Write(bytes);
+            //logger.Write(j);
+            //logger.Write(bytes.AsSpan(0, bytes.Length - 8));
+            //logger.Write(j);
+            //logger.FinishLog();
         }
 
-        distributedWal.ExecuteReadOperation(null);
+        //distributedWal.ExecuteReadOperation(null);
 
         Console.WriteLine(sw.ElapsedMilliseconds);
         sw.Restart();
+
+        Console.WriteLine("WaitingForReader " + PoorTelemetry.WaitingForReader);
+        Console.WriteLine("ReaderWaitingForMoreData " + PoorTelemetry.ReaderWaitingForMoreData);
+        Console.WriteLine("FileWriteCount " + PoorTelemetry.FileWriteCount);
+        Console.WriteLine("BytesWritten " + PoorTelemetry.BytesWritten);
 
         distributedWal.Flush();
 
-        Console.WriteLine(sw.ElapsedMilliseconds);
+
+
+        Console.WriteLine("Flush " + sw.ElapsedMilliseconds);
         sw.Restart();
 
+
+        //var sw = Stopwatch.StartNew();
+        //var mesageSize = 256;
 
         for (int j = 0; j < int.MaxValue / (mesageSize + 20); j++)
         {
             distributedWal.ApplyCommittedLogs();
         }
 
-        distributedWal.StopAsync().GetAwaiter().GetResult();
+        //distributedWal.StopAsync().GetAwaiter().GetResult();
 
-        Console.WriteLine(sw.ElapsedMilliseconds);
+        Console.WriteLine("Apply time" + sw.ElapsedMilliseconds);
+        Console.WriteLine("FileReadCount " + PoorTelemetry.FileReadCount);
+        Console.WriteLine("BytesRead " + PoorTelemetry.BytesRead);
+        Console.WriteLine("BytesCopied " + PoorTelemetry.BytesCopied);
+        Console.WriteLine("TimesCopied " + PoorTelemetry.TimesCopied);
+        Console.WriteLine("BytesCopiedFast " + PoorTelemetry.BytesCopiedFast);
+        Console.WriteLine("TimesCopiedFast " + PoorTelemetry.TimesCopiedFast);
         //distributedWal.Stop().GetAwaiter().GetResult()
     }
 
