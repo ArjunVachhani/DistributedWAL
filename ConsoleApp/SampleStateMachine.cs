@@ -1,14 +1,14 @@
 ﻿using DistributedWAL;
+using System.Buffers.Binary;
 
 namespace ConsoleApp;
 
 internal class SampleStateMachine : IStateMachine
 {
-    public object ApplyLog(LogReader logReader)
+    public object ApplyLog(ReadOnlySpan<byte> bytes)
     {
-        var v = logReader.ReadInt32();
-        logReader.GetSpan(256 - 8);
-        var v2 = logReader.ReadInt32();
+        var v = BinaryPrimitives.ReadInt32LittleEndian(bytes);
+        var v2 = BinaryPrimitives.ReadInt32LittleEndian(bytes.Slice(bytes.Length - 4));
         if (v != v2)
         {
 

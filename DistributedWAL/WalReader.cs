@@ -2,7 +2,7 @@
 
 namespace DistributedWAL;
 
-public delegate void LogReaderAction(LogReader logReader);
+public delegate void LogReaderAction(LogNumber logNumber, ReadOnlySpan<byte> bytes);
 
 internal class WalReader
 {
@@ -31,7 +31,8 @@ internal class WalReader
             _currentLogSizeWithOverhead = ReadInt32() + Constants.MessageOverhead;
             _currentLogTerm = ReadInt32();
             _currentLogIndex = ReadInt64();
-            _readerMethod(new LogReader(this, new LogNumber(_currentLogTerm, _currentLogIndex)));
+            var bytes = _bufferSegment.GetSpan(Constants.MessageHeaderSize, _bufferSegment.Length - Constants.MessageOverhead);
+            _readerMethod(new LogNumber(_currentLogTerm, _currentLogIndex), bytes);
             _fileReader.CompleteRead();
             return new LogNumber(_currentLogTerm, _currentLogIndex);
         }

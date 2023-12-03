@@ -99,15 +99,15 @@ public class DistributedWal<T> where T : class, IStateMachine, new()
     }
 
     //TODO find proper name
-    private void LogProcessor(LogReader logReader)
+    private void LogProcessor(LogNumber logNumber, ReadOnlySpan<byte> bytes)
     {
         if (1 < 1 + 1)//TODO non raft specific log will be passed
         {
-            var result = _stateMachine.ApplyLog(logReader);
+            var result = _stateMachine.ApplyLog(bytes);
 
             try
             {
-                _resultCallback?.Invoke(logReader.LogNumber, result);
+                _resultCallback?.Invoke(logNumber, result);
             }
             catch (Exception)
             {
