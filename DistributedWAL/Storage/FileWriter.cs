@@ -46,9 +46,9 @@ internal class FileWriter : IFileWriter
         return bufferSegment;
     }
 
-    public void CompleteWrite(int size, LogNumber logNumber)
+    public void CompleteWrite(int size)
     {
-        _logBuffer.CompleteWrite(size, logNumber);
+        _logBuffer.CompleteWrite(size);
     }
 
     public void CancelWrite()
@@ -100,9 +100,9 @@ internal class FileWriter : IFileWriter
             {
                 var data = _logBuffer.BeginRead();
                 //TODO new file if file max size is reached.
-                _logFile.Write(data.Bytes);
-                _logBuffer.CompleteRead(data.Bytes.Length);
-                PoorTelemetry.BytesWritten += data.Bytes.Length;
+                _logFile.Write(data);
+                _logBuffer.CompleteRead(data.Length);
+                PoorTelemetry.BytesWritten += data.Length;
                 _logFile.Flush();
                 batchStarted = false;
                 PoorTelemetry.FileWriteCount++;

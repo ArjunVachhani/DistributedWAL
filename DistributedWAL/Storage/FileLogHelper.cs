@@ -1,4 +1,6 @@
-﻿namespace DistributedWAL.Storage;
+﻿using System.Buffers.Binary;
+
+namespace DistributedWAL.Storage;
 
 internal static class FileLogHelper
 {
@@ -13,7 +15,7 @@ internal static class FileLogHelper
         do
         {
             fileStream.ReadExactly(bytes);
-            logSize = BitConverter.ToInt32(bytes);
+            logSize = BinaryPrimitives.ReadInt32LittleEndian(bytes);
             if (logSize > 0)
             {
                 var seek = logSize + (Constants.MessageHeaderSize - Constants.MessagPayloadSize) + Constants.MessageTrailerSize;
@@ -39,11 +41,11 @@ internal static class FileLogHelper
         do
         {
             fileStream.ReadExactly(bytes);
-            logSize = BitConverter.ToInt32(bytes);
+            logSize = BinaryPrimitives.ReadInt32LittleEndian(bytes);
             if (logSize > 0)
             {
                 fileStream.ReadExactly(bytes);
-                var currentLogIndex = BitConverter.ToInt64(bytes);
+                var currentLogIndex = BinaryPrimitives.ReadInt64LittleEndian(bytes);
                 if (currentLogIndex == logIndex)
                 {
                     fileStream.Seek(-Constants.MessageHeaderSize, SeekOrigin.Current);
@@ -84,13 +86,13 @@ internal static class FileLogHelper
         do
         {
             fileStream.ReadExactly(bytes);
-            logSize = BitConverter.ToInt32(bytes);
+            logSize = BinaryPrimitives.ReadInt32LittleEndian(bytes);
             if (logSize > 0)
             {
                 var seek = logSize + (Constants.MessageHeaderSize - Constants.MessagPayloadSize);
                 fileStream.Seek(seek, SeekOrigin.Current);
                 fileStream.ReadExactly(bytes);
-                var logSizeEnd = BitConverter.ToInt32(bytes);
+                var logSizeEnd = BinaryPrimitives.ReadInt32LittleEndian(bytes);
                 if (logSize != logSizeEnd)
                 {
                     ZeroOutFile(fileStream, (int)fileStream.Position - (logSize + Constants.MessageOverhead));

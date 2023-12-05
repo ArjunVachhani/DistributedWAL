@@ -23,16 +23,16 @@ internal class FileReader : IFileReader
         _readerThread.Start();
     }
 
-    public BufferSegment ReadNextLog()
+    public ReadOnlySpan<byte> ReadNextLog()
     {
-        BufferSegment bufferSegment;
-        while (!_logBuffer.TryReadLog(out bufferSegment))
+        ReadOnlySpan<byte> bytes;
+        while (!_logBuffer.TryReadLog(out bytes))
         {
             _logBuffer.WaitForDataToRead();
         }
-        _lastLogSize = bufferSegment.Length;
+        _lastLogSize = bytes.Length;
         //TODO we will need to have logic to check it log was overwritten to discard the cache and re read the logs
-        return bufferSegment;
+        return bytes;
     }
 
     public void CompleteRead()
@@ -64,26 +64,28 @@ internal class FileReader : IFileReader
         byte[] tempBuffer = new byte[_logBuffer.Capacity];
         int tempBufferStart = 0;
         bool batchStarted = false;
-        int bytes;
+        int bytesAvailable;
         while (Volatile.Read(ref stopping) == false || batchStarted)//TODO  || Volatile.Read(ref writesInProgress)
         {
-            bytes = _logFile.BytesAvailableToRead;
-            if (bytes > 0 && batchStarted == false)
+            bytesAvailable = _logFile.BytesAvailableToRead;
+            if (bytesAvailable > 0 && batchStarted == false)
             {
                 batchStartTime = DateTime.UtcNow;
                 batchStarted = true;
             }
             //TODO we need to jump to new file on reaching end of file.
             var microseconds = Utils.GetDateDiffMicroseconds(batchStartTime, DateTime.UtcNow);
-            if (bytes > 0 && bytes < BatchSize && microseconds < _readBatchTimeInMicroseconds)
+            if (bytesAvailable > 0 && bytesAvailable < BatchSize && microseconds < _readBatchTimeInMicroseconds)
             {
                 PoorTelemetry.ReaderWaitingForMoreData++;
                 Thread.SpinWait(25);
             }
-            else if (bytes > BatchSize || (batchStarted && microseconds >= _readBatchTimeInMicroseconds))
+            else if (bytesAvailable > BatchSize || (batchStarted && microseconds >= _readBatchTimeInMicroseconds))
             {
                 var bufferCapacity = tempBuffer.Length - tempBufferStart;
-                var bytesToWrite = tempBufferStart + _logFile.Read(tempBuffer.AsSpan(tempBufferStart, bytes > bufferCapacity ? bufferCapacity : bytes));
+                var idealReadSize = bufferCapacity > 16384 ? 16384 : bufferCapacity;
+                var readSize = bytesAvailable > idealReadSize ? idealReadSize : bytesAvailable;
+                var bytesToWrite = tempBufferStart + _logFile.Read(tempBuffer.AsSpan(tempBufferStart, readSize));
                 tempBufferStart = 0;//next time it should start from 0, if data is left it will be shifted and tempBufferStart will be updated
                 var startPosition = 0;
                 while (bytesToWrite > 4)
@@ -111,7 +113,7 @@ internal class FileReader : IFileReader
                 batchStarted = false;
                 PoorTelemetry.FileReadCount++;
             }
-            else if (bytes == 0)
+            else if (bytesAvailable == 0)
             {
                 _logFile.WaitForMoreData();
             }
@@ -127,9 +129,7 @@ internal class FileReader : IFileReader
             //Thread.SpinWait(20);//TODO we are busy spining, may be we should wait
         }
         bytes.AsSpan(startIndex, length).CopyTo(bufferSegment.GetSpan(0, length));
-        var term = BitConverter.ToInt32(bytes, Constants.MessagPayloadSize);
-        var logIndex = BitConverter.ToInt64(bytes, 8);
-        _logBuffer.CompleteWrite(length, new LogNumber(term, logIndex));
+        _logBuffer.CompleteWrite(length);
     }
 
     private void ShiftDataInBegning(byte[] bytes, int startIndex, int length)

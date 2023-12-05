@@ -26,7 +26,7 @@ public class DistributedWal<T> where T : class, IStateMachine, new()
 
     private long _appliedLogIndex = -1; // TODO initialize
 
-    private readonly Subscription WalApplierSubscription; //TODO this is hack, find proper api
+    private readonly Subscription _walApplierSubscription; //TODO this is hack, find proper api
 
     private ResultCallback? _resultCallback;
 
@@ -45,7 +45,7 @@ public class DistributedWal<T> where T : class, IStateMachine, new()
     {
         _consensus = consensus;
         _stateMachine = new T();
-        WalApplierSubscription = AddSubscriber(LogProcessor, 0);
+        _walApplierSubscription = AddSubscriber(LogProcessor, 0);
     }
 
     public LogNumber WriteLog(ReadOnlySpan<byte> bytes)
@@ -56,7 +56,7 @@ public class DistributedWal<T> where T : class, IStateMachine, new()
     //TODO do we really need to expose this with public modifier?
     internal Subscription AddSubscriber(LogReaderAction logReader, long index)
     {
-        return new Subscription(new WalReader(_consensus, logReader, index));
+        return new Subscription(_consensus, logReader, index);
     }
 
     public void RegisterLogResultCallback(ResultCallback statusCallback)
@@ -83,7 +83,7 @@ public class DistributedWal<T> where T : class, IStateMachine, new()
         {
             if (_consensus.CommittedLogIndex > _appliedLogIndex)
             {
-                var logNumber = WalApplierSubscription.ProcessNext();
+                var logNumber = _walApplierSubscription.ProcessNext();
                 if (logNumber == null)
                 {
                     //TODO sleep/wait/semaphore

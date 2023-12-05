@@ -17,8 +17,6 @@ internal class LogBuffer
     private readonly ManualResetEventSlim _writeManualRestEventSlim = new ManualResetEventSlim(false);
     private readonly byte[] _bytes;
 
-    private LogNumber _logNumber = default!;
-
     private int _writeInProgress = 0;
 
     private int _writerPosition = 0;
@@ -49,23 +47,21 @@ internal class LogBuffer
         return _writeManualRestEventSlim.Wait(100);
     }
 
-    public LogBufferReadResult BeginRead()
+    public ReadOnlySpan<byte> BeginRead()
     {
         int writerPosition;
         int readerPositoin;
-        LogNumber logNumber;
         while (Interlocked.CompareExchange(ref _lock, 1, 0) == 1)
         {
             Thread.SpinWait(1);
         }
         writerPosition = _writerPosition;
         readerPositoin = _readerPosition;
-        logNumber = _logNumber;
         Interlocked.Exchange(ref _lock, 0);
-        return new LogBufferReadResult(new ReadOnlySpan<byte>(_bytes, readerPositoin, writerPosition - readerPositoin), logNumber);
+        return new ReadOnlySpan<byte>(_bytes, readerPositoin, writerPosition - readerPositoin);
     }
 
-    public bool TryReadLog(out BufferSegment bufferSegment)
+    public bool TryReadLog(out ReadOnlySpan<byte> bytes)
     {
         while (Interlocked.CompareExchange(ref _lock, 1, 0) == 1)
         {
@@ -74,14 +70,14 @@ internal class LogBuffer
         if (_readerPosition < _writerPosition)
         {
             var size = BitConverter.ToInt32(_bytes, _readerPosition);
-            bufferSegment = new BufferSegment(_bytes, _readerPosition, size + Constants.MessageOverhead);
+            bytes = _bytes.AsSpan(_readerPosition, size + Constants.MessageOverhead); //new BufferSegment(_bytes, _readerPosition, size + Constants.MessageOverhead);
             Interlocked.Exchange(ref _lock, 0);
             return true;
         }
         else
         {
             Interlocked.Exchange(ref _lock, 0);
-            bufferSegment = default;
+            bytes = default;
             return false;
         }
     }
@@ -146,7 +142,6 @@ internal class LogBuffer
             var startPosition = _writerPosition;
             result = true;
             _writeInProgress = 1;
-            _logNumber = logNumber;
             Interlocked.Exchange(ref _lock, 0);
 
             var span = _bytes.AsSpan(startPosition, messageSize);
@@ -198,7 +193,7 @@ internal class LogBuffer
         }
     }
 
-    public void CompleteWrite(int size, LogNumber logNumber)
+    public void CompleteWrite(int size)
     {
         while (Interlocked.CompareExchange(ref _lock, 1, 0) == 1)
         {
@@ -208,7 +203,6 @@ internal class LogBuffer
         if (_writeInProgress == 1)
         {
             Interlocked.Add(ref _writerPosition, size);
-            _logNumber = logNumber;
             Interlocked.Exchange(ref _writeInProgress, 0);
         }
 
@@ -230,18 +224,4 @@ internal class LogBuffer
 
         Interlocked.Exchange(ref _lock, 0);
     }
-}
-
-internal readonly ref struct LogBufferReadResult
-{
-    [Obsolete("Use parameterized constructor.", true)]
-    public LogBufferReadResult() { }
-
-    public LogBufferReadResult(ReadOnlySpan<byte> bytes, LogNumber logNumber)
-    {
-        Bytes = bytes;
-        LogNumber = logNumber;
-    }
-    internal ReadOnlySpan<byte> Bytes { get; private init; }
-    internal LogNumber LogNumber { get; private init; }
 }

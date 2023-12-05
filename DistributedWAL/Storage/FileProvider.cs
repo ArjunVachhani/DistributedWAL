@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Buffers.Binary;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
 namespace DistributedWAL.Storage;
@@ -64,11 +65,11 @@ internal class FileProvider : IFileProvider
             if (fileStream.Length > Constants.MessageOverhead)
             {
                 fileStream.ReadExactly(buffer);//read size and term.
-                var size = BitConverter.ToInt32(buffer);
+                var size = BinaryPrimitives.ReadInt32LittleEndian(buffer);
                 if (size > 0)
                 {
                     fileStream.ReadExactly(buffer);
-                    var logIndex = BitConverter.ToInt64(buffer);
+                    var logIndex = BinaryPrimitives.ReadInt64LittleEndian(buffer);
                     _fileIndex.Add(new FileEntry(fileIndex, logIndex));
                     fileStream.Dispose();
                 }

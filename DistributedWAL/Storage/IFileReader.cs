@@ -2,6 +2,6 @@
 
 internal interface IFileReader
 {
-    BufferSegment ReadNextLog();
+    ReadOnlySpan<byte> ReadNextLog();
     void CompleteRead();
 }
