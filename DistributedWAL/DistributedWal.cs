@@ -131,5 +131,5 @@ public class DistributedWal<T> where T : class, IStateMachine, new()
         return _stateMachine.ExecuteReadOperation(command);
     }
 
-    //TODO Expose admin api for admin nodes/removing node/snapshot
+    //TODO Expose admin api for nodes/removing node/snapshot
 }

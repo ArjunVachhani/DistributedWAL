@@ -88,6 +88,8 @@ internal class FileReader : IFileReader
                 var bytesToWrite = tempBufferStart + _logFile.Read(tempBuffer.AsSpan(tempBufferStart, readSize));
                 tempBufferStart = 0;//next time it should start from 0, if data is left it will be shifted and tempBufferStart will be updated
                 var startPosition = 0;
+                PoorTelemetry.BytesRead += readSize;
+                PoorTelemetry.FileReadCount++;
                 while (bytesToWrite > 4)
                 {
                     var logSize = BitConverter.ToInt32(tempBuffer, startPosition) + Constants.MessageOverhead;
@@ -109,9 +111,7 @@ internal class FileReader : IFileReader
                     ShiftDataInBegningFast(tempBuffer, startPosition, bytesToWrite);
                     tempBufferStart = bytesToWrite;
                 }
-                PoorTelemetry.BytesRead += bytesToWrite;
                 batchStarted = false;
-                PoorTelemetry.FileReadCount++;
             }
             else if (bytesAvailable == 0)
             {
@@ -145,10 +145,16 @@ internal class FileReader : IFileReader
     private void ShiftDataInBegningFast(byte[] bytes, int startIndex, int length)
     {
         PoorTelemetry.BytesCopiedFast += length;
-        PoorTelemetry.TimesCopiedFast += length;
+        PoorTelemetry.TimesCopiedFast++;
         for (int i = 0; i < length; i++)
         {
             bytes[i] = bytes[startIndex + i];
         }
+    }
+
+    public void Dispose()
+    {
+        //TODO
+        throw new NotImplementedException();
     }
 }
