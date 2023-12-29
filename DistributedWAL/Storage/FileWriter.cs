@@ -13,6 +13,8 @@ internal class FileWriter : IFileWriter
     private bool stopping = false;//TODO better mechanism
     //private bool writesInProgress = false;
 
+    public LogNumber SavedLogNumber { get; }//TODO
+
     public FileWriter(IFileProvider fileprovider, int writeBatchTime)
     {
         _fileProvider = fileprovider;
@@ -116,5 +118,11 @@ internal class FileWriter : IFileWriter
                 }
             }
         }
+    }
+
+    public void Dispose()
+    {
+        //TODO
+        throw new NotImplementedException();
     }
 }

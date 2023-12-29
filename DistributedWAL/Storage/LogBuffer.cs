@@ -70,7 +70,7 @@ internal class LogBuffer
         if (_readerPosition < _writerPosition)
         {
             var size = BitConverter.ToInt32(_bytes, _readerPosition);
-            bytes = _bytes.AsSpan(_readerPosition, size + Constants.MessageOverhead); //new BufferSegment(_bytes, _readerPosition, size + Constants.MessageOverhead);
+            bytes = _bytes.AsSpan(_readerPosition, size + Constants.MessageOverhead);
             Interlocked.Exchange(ref _lock, 0);
             return true;
         }

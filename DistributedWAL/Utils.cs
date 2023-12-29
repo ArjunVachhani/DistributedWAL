@@ -21,6 +21,25 @@ internal static class Utils
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool TryVerifyAndReadLogNumber(ReadOnlySpan<byte> buffer, out LogNumber logNumber)
+    {
+        logNumber = default;
+        if (buffer.Length < Constants.MessageOverhead)
+            return false;
+
+        var lengthStart = BinaryPrimitives.ReadInt32LittleEndian(buffer);
+        var term = BinaryPrimitives.ReadInt32LittleEndian(buffer.Slice(Constants.TermOffset));
+        var index = BinaryPrimitives.ReadInt64LittleEndian(buffer.Slice(Constants.IndexOffset));
+        var lengthEnd = BinaryPrimitives.ReadInt32LittleEndian(buffer.Slice(buffer.Length - Constants.MessageTrailerSize));
+
+        if (lengthStart != lengthEnd || lengthStart + Constants.MessageOverhead != buffer.Length)
+            return false;
+
+        logNumber = new LogNumber(term, index);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static LogNumber VerifyAndReadLogNumber(ReadOnlySpan<byte> buffer)
     {
         if (buffer.Length < Constants.MessageOverhead)

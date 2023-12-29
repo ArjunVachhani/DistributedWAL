@@ -44,8 +44,8 @@ internal static class FileLogHelper
             logSize = BinaryPrimitives.ReadInt32LittleEndian(bytes);
             if (logSize > 0)
             {
-                fileStream.ReadExactly(bytes);
-                var currentLogIndex = BinaryPrimitives.ReadInt64LittleEndian(bytes);
+                fileStream.ReadExactly(bytes);//reads message size and log term, term is not parsed
+                var currentLogIndex = BinaryPrimitives.ReadInt64LittleEndian(bytes);//reads log index
                 if (currentLogIndex == logIndex)
                 {
                     fileStream.Seek(-Constants.MessageHeaderSize, SeekOrigin.Current);
@@ -85,7 +85,7 @@ internal static class FileLogHelper
         var logSize = 0;
         do
         {
-            fileStream.ReadExactly(bytes);
+            fileStream.ReadExactly(bytes);//reads message size and log term, term is not parsed
             logSize = BinaryPrimitives.ReadInt32LittleEndian(bytes);
             if (logSize > 0)
             {

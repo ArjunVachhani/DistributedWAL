@@ -1,6 +1,6 @@
 ﻿namespace DistributedWAL.Storage;
 
-internal interface IFileReader
+public interface IFileReader : IDisposable
 {
     ReadOnlySpan<byte> ReadNextLog();
     void CompleteRead();

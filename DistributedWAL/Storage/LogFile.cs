@@ -27,7 +27,8 @@ internal readonly struct LogFile : IDisposable
 
     internal int Read(Span<byte> bytes)
     {
-        return FileStream.Read(bytes);
+        FileStream.ReadExactly(bytes);
+        return bytes.Length;
     }
 
     internal void Flush()
@@ -42,7 +43,7 @@ internal readonly struct LogFile : IDisposable
     }
 }
 
-internal class LogFileStats
+internal class LogFileStats //TODO make singleton for a file
 {
     private int _lockInt = 0;
     private readonly object _lock = new object();
